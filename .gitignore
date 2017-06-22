@@ -1,0 +1,10 @@
+*.swp
+*~
+
+notebooks/Untitled*
+.ipynb*
+
+data/*.csv
+data/*.json
+
+__pycache__/
