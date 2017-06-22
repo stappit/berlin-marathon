@@ -4,6 +4,8 @@ import json
 import csv
 import time
 import os
+import glob
+import pandas as pd
 from collections import namedtuple
 
 
@@ -85,45 +87,60 @@ def get_jsons(year):
             yield j
 
 
+def make_csv(json_glob, csv_filename, mode='w'):
+
+    # Get the filenames
+    fns = glob.glob(json_glob)
+    appending = 'a' in mode
+
+    with open(csv_filename, mode) as cf:
+        writer = csv.writer(cf)
+
+        # Only write headers if not appending to existing
+        if not appending:
+            writer.writerow(('year',) + Row._fields)
+
+        # Write all data to csv
+        for fn in fns:
+            year = os.path.basename(fn).split('-')[0]
+            with open(fn) as f:
+                j = json.load(f)
+                rows = get_rows(j)
+                [writer.writerow((year,) + row) for row in rows]
+
+    # Sort the data so that order is consistent
+    df = pd.read_csv(csv_filename).sort_values(['year', 'id']).reset_index(drop=True)
+
+    if appending:
+        kwargs = dict()
+    else:
+        kwargs = dict(index=True, index_label='idx')
+
+    df.to_csv(csv_filename, **kwargs)
+
+    return df
+
 
 def main(years, directory='data'):
     """
     Get json data from Berlin marathon API and write it to a file in csv format.
     """
 
-    filename = os.path.join(directory, 'berlin_marathon_times_dirty.csv')
-    with open(filename, 'a') as f:
-        writer = csv.writer(f)
-        writer.writerow(Row._fields + ('year',))
-        for year in years:
-            for j in get_jsons(year):
-                try:
-                    meta, rows = get_data(j)
-                    jname = os.path.join(directory, 
-                                         '{0}-{1}.json'.format(year, meta.page))
-                    with open(jname, 'w') as f:
-                        json.dump(j, f)
-                    [writer.writerow(row + (year,)) for row in rows]
-                    logging.debug('Success: year {0} page {1}'.format(year,
-                                                                      meta.page))
-                except Exception as e:
-                    logging.exception(e)
+    for year in years:
+        for j in get_jsons(year):
+            try:
+                meta, rows = get_data(j)
+                jname = os.path.join(directory, 
+                                     '{0}-{1}.json'.format(year, meta.page))
+                with open(jname, 'w') as f:
+                    json.dump(j, f)
+                logging.debug('Success: year {0} page {1}'.format(year,
+                                                                  meta.page))
+            except Exception as e:
+                logging.exception(e)
 
 
 if __name__ == '__main__':
-    # years = range(2015, 2017)
-    # main(years)
-
-    ###
-
-    for year, page in [(2015, 334), (2015, 245), (2016, 61)]:
-        j = get_json(year, page)
-        meta, rows = get_data(j)
-        jname = os.path.join('data', 
-                             '{0}-{1}.json'.format(year, meta.page))
-        with open(jname, 'w') as f:
-            json.dump(j, f)
-
-        with open('data/berlin_marathon_times_dirty.csv', 'a') as f:
-            writer = csv.writer(f)
-            [writer.writerow(row + (year,)) for row in rows]
+    years = range(2005, 2017)
+    main(years, directory='data')
+    make_csv('data/*.json', 'berlin_marathon_times_dirty.csv')
